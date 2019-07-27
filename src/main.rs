@@ -5,12 +5,14 @@ extern crate log;
 #[macro_use]
 extern crate serde;
 
-use jenkins_api::client::{Path, TreeBuilder};
-use jenkins_api::{JenkinsBuilder};
+use jenkins_api::client::Path;
+use jenkins_api::JenkinsBuilder;
 use log::info;
 use std::env;
-use std::time::Duration;
 use structopt::StructOpt;
+
+mod objects;
+use objects::{LastBuildOfJob, RootIterator};
 
 
 #[derive(StructOpt, Debug)]
@@ -31,35 +33,7 @@ enum Jenr {
     },
 }
 
-#[derive(Deserialize)]
-struct RootIterator {
-    #[serde(alias = "computer")]
-    #[serde(alias = "jobs")]
-    named_objects: Vec<NamedObject>,
-}
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct LastBuild {
-    duration: u32,
-    number: u32,
-    result: Option<String>,
-    url: Option<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct LastBuildOfJob {
-    display_name: Option<String>,
-    last_build: LastBuild,
-}
-
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct NamedObject {
-    display_name: Option<String>,
-}
 
 
 fn main() -> Result<(), failure::Error> {
@@ -74,35 +48,12 @@ fn main() -> Result<(), failure::Error> {
                 "job" => Path::Job { name: &name, configuration: None },
                 _     => Path::Job { name: &name, configuration: None },
             };
-
-            let object_tree = TreeBuilder::new()
-                           .with_field("displayName")
-                           .with_field(
-                               TreeBuilder::object("lastBuild")
-                                   .with_subfield("duration")
-                                   .with_subfield("number")
-                                   .with_subfield("result")
-                                   .with_subfield("url"),
-                           )
-                           .build();
+            let object_tree = LastBuildOfJob::get_default_tree().build();
 
             info!("Fetching the {} named {}.", &object, &name);
-            let object: LastBuildOfJob = jenkins.get_object_as(
-                object_to_fetch,
-                object_tree,
-            )?;
+            let object: LastBuildOfJob = jenkins.get_object_as(object_to_fetch, object_tree)?;
 
-            let duration = Duration::from_millis(object.last_build.duration as u64);
-
-            println!(
-                "----------\nLast build\n----------\n\nJOB: {}\nNUMBER: {}\nRESULT: {}\nDURATION: {}s\nURL: {}",
-                object.display_name.unwrap(),
-                object.last_build.number,
-                object.last_build.result.unwrap(),
-                duration.as_secs(),
-                object.last_build.url.unwrap(),
-            );
-
+            object.display_status();
         },
 
         Jenr::List { object } => {
@@ -112,18 +63,15 @@ fn main() -> Result<(), failure::Error> {
                 _           => (Path::Home, "jobs"),
             };
 
-            let tree = TreeBuilder::new()
-                           .with_field(TreeBuilder::object(&object_name).with_subfield("displayName"))
-                           .build();
-
-            let iterator: RootIterator = jenkins.get_object_as(
+            info!("Fetching the root object named {}.", &object_name);
+            let tree = RootIterator::get_default_tree(&object_name).build();
+            let root_iterator: RootIterator = jenkins.get_object_as(
                 object_to_fetch,
                 tree,
             )?;
 
-            for named_object in iterator.named_objects {
-                println!("{}", named_object.display_name.unwrap())
-            }
+            root_iterator.list_items();
+
         },
     }
 
