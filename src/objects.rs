@@ -1,6 +1,6 @@
 use jenkins_api::client::TreeBuilder;
 use std::time::Duration;
-
+extern crate failure;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -15,12 +15,13 @@ pub struct RootIterator {
     named_objects: Vec<NamedObject>,
 }
 
-
 impl RootIterator {
-    pub fn list_items(self) {
+    pub fn list_items(self) -> Result<(), failure::Error> {
         for named_object in self.named_objects {
-            println!("{}", named_object.display_name.unwrap())
+            let display_name = named_object.display_name.unwrap_or("None".to_string());
+            println!("{}", display_name);
         }
+        Ok(())
     }
 
     pub fn get_default_tree(object_name: &str) -> TreeBuilder {
@@ -45,30 +46,32 @@ pub struct LastBuildOfJob {
 }
 
 impl LastBuildOfJob {
-
-    pub fn display_status(self) {
+    pub fn display_status(self) -> Result<(), failure::Error> {
         let duration = Duration::from_millis(self.last_build.duration as u64);
+
+        let display_name = self.display_name.unwrap_or("None".to_string());
+        let result = self.last_build.result.unwrap_or("UNFINISHED".to_string());
+        let url = self.last_build.url.unwrap_or("None".to_string());
 
         println!(
             "----------\nLast build\n----------\n\nJOB: {}\nNUMBER: {}\nRESULT: {}\nDURATION: {}s\nURL: {}",
-            self.display_name.unwrap(),
+            display_name,
             self.last_build.number,
-            self.last_build.result.unwrap(),
+            result,
             duration.as_secs(),
-            self.last_build.url.unwrap(),
+            url,
         );
+
+        Ok(())
     }
 
     pub fn get_default_tree() -> TreeBuilder {
-        TreeBuilder::new()
-           .with_field("displayName")
-           .with_field(
-               TreeBuilder::object("lastBuild")
-                   .with_subfield("duration")
-                   .with_subfield("number")
-                   .with_subfield("result")
-                   .with_subfield("url"),
-           )
+        TreeBuilder::new().with_field("displayName").with_field(
+            TreeBuilder::object("lastBuild")
+                .with_subfield("duration")
+                .with_subfield("number")
+                .with_subfield("result")
+                .with_subfield("url"),
+        )
     }
-
 }
