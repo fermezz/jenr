@@ -1,9 +1,8 @@
 extern crate env_logger;
-extern crate failure;
 extern crate jenkins_api;
 extern crate log;
-#[macro_use]
-extern crate serde;
+#[macro_use] extern crate serde;
+#[macro_use] extern crate failure;
 
 use jenkins_api::client::Path;
 use jenkins_api::JenkinsBuilder;
@@ -13,7 +12,6 @@ use structopt::StructOpt;
 
 mod objects;
 use objects::{LastBuildOfJob, RootIterator};
-
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "jenr", about = "Jenkins from the CLI!")]
@@ -33,46 +31,51 @@ enum Jenr {
     },
 }
 
-
-
-
 fn main() -> Result<(), failure::Error> {
     env_logger::init();
 
+    let key = "JENKINS_HOME";
+    let jenkins_home = match env::var(key) {
+        Ok(val) => val,
+        Err(e)  => bail!("Couldn't interpret {}: {}.", key, e),
+    };
+
     info!("Building Jenkins client.");
-    let jenkins = JenkinsBuilder::new(&env::var("JENKINS_HOME").unwrap()).build()?;
+    let jenkins = JenkinsBuilder::new(&jenkins_home).build()?;
 
     match Jenr::from_args() {
         Jenr::Status { object, name } => {
             let object_to_fetch: Path = match &object as &str {
-                "job" => Path::Job { name: &name, configuration: None },
-                _     => Path::Job { name: &name, configuration: None },
+                "job" => Path::Job {
+                    name: &name,
+                    configuration: None,
+                },
+                _ => Path::Job {
+                    name: &name,
+                    configuration: None,
+                },
             };
             let object_tree = LastBuildOfJob::get_default_tree().build();
 
             info!("Fetching the {} named {}.", &object, &name);
             let object: LastBuildOfJob = jenkins.get_object_as(object_to_fetch, object_tree)?;
 
-            object.display_status();
-        },
+            object.display_status().expect("There was an error printing the status of the object");
+        }
 
         Jenr::List { object } => {
             let (object_to_fetch, object_name) = match &object as &str {
                 "computers" => (Path::Computers, "computer"),
-                "jobs"      => (Path::Home, "jobs"),
-                _           => (Path::Home, "jobs"),
+                "jobs" => (Path::Home, "jobs"),
+                _ => (Path::Home, "jobs"),
             };
 
             info!("Fetching the root object named {}.", &object_name);
             let tree = RootIterator::get_default_tree(&object_name).build();
-            let root_iterator: RootIterator = jenkins.get_object_as(
-                object_to_fetch,
-                tree,
-            )?;
+            let root_iterator: RootIterator = jenkins.get_object_as(object_to_fetch, tree)?;
 
-            root_iterator.list_items();
-
-        },
+            root_iterator.list_items().expect("There was an error printing the list");
+        }
     }
 
     Ok(())
