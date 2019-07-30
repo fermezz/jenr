@@ -31,7 +31,7 @@ impl RootIterator {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct LastBuild {
+struct Build {
     duration: u32,
     number: u32,
     result: Option<String>,
@@ -40,23 +40,25 @@ struct LastBuild {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LastBuildOfJob {
+pub struct BuildOfJob {
     display_name: Option<String>,
-    last_build: LastBuild,
+    #[serde(alias = "lastBuild")]
+    #[serde(alias = "lastCompletedBuild")]
+    build: Build,
 }
 
-impl LastBuildOfJob {
+impl BuildOfJob {
     pub fn display_status(self) -> Result<(), failure::Error> {
-        let duration = Duration::from_millis(self.last_build.duration as u64);
+        let duration = Duration::from_millis(self.build.duration as u64);
 
         let display_name = self.display_name.unwrap_or("None".to_string());
-        let result = self.last_build.result.unwrap_or("UNFINISHED".to_string());
-        let url = self.last_build.url.unwrap_or("None".to_string());
+        let result = self.build.result.unwrap_or("UNFINISHED".to_string());
+        let url = self.build.url.unwrap_or("None".to_string());
 
         println!(
-            "----------\nLast build\n----------\n\nJOB: {}\nNUMBER: {}\nRESULT: {}\nDURATION: {}s\nURL: {}",
+            "----------\n  Build  \n----------\n\nJOB: {}\nNUMBER: {}\nRESULT: {}\nDURATION: {}s\nURL: {}",
             display_name,
-            self.last_build.number,
+            self.build.number,
             result,
             duration.as_secs(),
             url,
@@ -65,13 +67,43 @@ impl LastBuildOfJob {
         Ok(())
     }
 
-    pub fn get_default_tree() -> TreeBuilder {
+    pub fn get_tree_for_build(build_kind: &str) -> TreeBuilder {
         TreeBuilder::new().with_field("displayName").with_field(
-            TreeBuilder::object("lastBuild")
+            TreeBuilder::object(build_kind)
                 .with_subfield("duration")
                 .with_subfield("number")
                 .with_subfield("result")
                 .with_subfield("url"),
         )
+    }
+}
+
+#[derive(Deserialize)]
+struct DescribedObject {
+    description: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HealthReportOfJob {
+    name: String,
+    health_report: Vec<DescribedObject>,
+}
+
+impl HealthReportOfJob {
+    pub fn display_health_report(self) -> Result<(), failure::Error> {
+        println!("-----------  Health Check  ------------");
+        println!("\nJob Name: {}", self.name);
+        for report in self.health_report {
+            let description = report.description.unwrap_or("None".to_string());
+            println!("\n{}", description);
+        }
+        Ok(())
+    }
+
+    pub fn get_default_tree() -> TreeBuilder {
+        TreeBuilder::new()
+            .with_field("name")
+            .with_field(TreeBuilder::object("healthReport").with_subfield("description"))
     }
 }
